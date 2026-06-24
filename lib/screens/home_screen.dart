@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../models/download_entry.dart';
 import '../models/video_info.dart';
 import '../services/download_service.dart';
+import '../services/history_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _urlController = TextEditingController();
   final DownloadService _downloadService = DownloadService();
+  final HistoryService _historyService = HistoryService();
 
   VideoInfo? _videoInfo;
   bool _isLoadingInfo = false;
@@ -21,6 +24,19 @@ class _HomeScreenState extends State<HomeScreen> {
   DownloadProgress? _downloadProgress;
   String? _errorMessage;
   String? _savedPath;
+  List<DownloadEntry> _history = [];
+  int _currentTab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final history = await _historyService.getHistory();
+    setState(() => _history = history);
+  }
 
   bool _isValidYouTubeUrl(String url) {
     final uri = Uri.tryParse(url);
@@ -89,6 +105,17 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() => _downloadProgress = progress);
       });
 
+      final entry = DownloadEntry(
+        title: _videoInfo!.title,
+        author: _videoInfo!.author,
+        thumbnailUrl: _videoInfo!.thumbnailUrl,
+        quality: _videoInfo!.quality,
+        filePath: savedPath,
+        timestamp: DateTime.now(),
+      );
+      await _historyService.addEntry(entry);
+      await _loadHistory();
+
       setState(() {
         _isDownloading = false;
         _savedPath = savedPath;
@@ -118,27 +145,160 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('YT Downloader'), centerTitle: true),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildUrlInput(),
+      appBar: AppBar(
+        title: const Text('YT Downloader'),
+        centerTitle: true,
+        actions: [
+          if (_currentTab == 1 && _history.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_sweep),
+              tooltip: 'Clear history',
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Clear History'),
+                    content: const Text('Remove all download history?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true) {
+                  await _historyService.clearHistory();
+                  await _loadHistory();
+                }
+              },
+            ),
+        ],
+      ),
+      body: _currentTab == 0 ? _buildHomeTab() : _buildHistoryTab(),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentTab,
+        onDestinationSelected: (index) => setState(() => _currentTab = index),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.history_outlined),
+            selectedIcon: Icon(Icons.history),
+            label: 'History',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHomeTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildUrlInput(),
+          const SizedBox(height: 12),
+          if (_isLoadingInfo) _buildLoadingIndicator(),
+          if (_errorMessage != null) _buildErrorMessage(),
+          if (_videoInfo != null) ...[
             const SizedBox(height: 12),
-            if (_isLoadingInfo) _buildLoadingIndicator(),
-            if (_errorMessage != null) _buildErrorMessage(),
-            if (_videoInfo != null) ...[
-              const SizedBox(height: 12),
-              _buildVideoCard(),
-            ],
-            if (_savedPath != null) ...[
-              const SizedBox(height: 12),
-              _buildSuccessMessage(),
-            ],
+            _buildVideoCard(),
+          ],
+          if (_savedPath != null) ...[
+            const SizedBox(height: 12),
+            _buildSuccessMessage(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHistoryTab() {
+    if (_history.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.history, size: 64, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('No downloads yet', style: TextStyle(color: Colors.grey)),
           ],
         ),
-      ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(8),
+      itemCount: _history.length,
+      itemBuilder: (context, index) {
+        final entry = _history[index];
+        return Card(
+          clipBehavior: Clip.antiAlias,
+          child: Row(
+            children: [
+              if (entry.thumbnailUrl.isNotEmpty)
+                SizedBox(
+                  width: 120,
+                  height: 68,
+                  child: Image.network(
+                    entry.thumbnailUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) => Container(
+                      color: Colors.grey[300],
+                      child: const Center(
+                        child: Icon(Icons.broken_image, size: 24),
+                      ),
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        entry.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${entry.author} • ${entry.quality}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      Text(
+                        _formatTimestamp(entry.timestamp),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.share),
+                onPressed: () async {
+                  await SharePlus.instance.share(
+                    ShareParams(files: [XFile(entry.filePath)]),
+                  );
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -344,5 +504,14 @@ class _HomeScreenState extends State<HomeScreen> {
       return '${(bytes / 1024).toStringAsFixed(1)} KB';
     }
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  String _formatTimestamp(DateTime timestamp) {
+    final now = DateTime.now();
+    final diff = now.difference(timestamp);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    return '${timestamp.day}/${timestamp.month}/${timestamp.year}';
   }
 }
