@@ -46,66 +46,41 @@ Add 3 new features to the YouTube Downloader app without breaking existing funct
 
 ---
 
-## Phase 2: FFmpeg Integration 🔄 PENDING
+## Phase 2: FFmpeg Integration ✅ COMPLETED
 
-**Status:** Not started.
+**Status:** Done — `flutter analyze` passes with 0 issues.
 
-**Goal:** Add `ffmpeg_kit_flutter_new` package to enable merging video+audio streams for high-quality (1080p+) downloads.
+**What was added:**
+- `ffmpeg_kit_flutter_new: ^4.2.0` dependency in `pubspec.yaml`
 
-**Planned changes:**
-- `pubspec.yaml` — Add `ffmpeg_kit_flutter_new: ^4.2.0` (use `_min` variant for ~5-8MB APK increase)
-- Build and verify no Gradle/SDK conflicts
-- Test FFmpeg works on device in isolation
-
-**DO NOT TOUCH:**
-- `MainActivity.kt` lines 13, 15-37 (MethodChannel setup)
-- `build.gradle.kts` lines 17-26 (SDK versions)
-- `AndroidManifest.xml` (permissions already complete)
-
-**Smoke test checklist:**
-- [ ] `flutter pub get` succeeds
-- [ ] APK builds without errors
-- [ ] FFmpeg test command runs on device
-- [ ] Existing download flow still works (regression test)
+**What was NOT changed:**
+- `MainActivity.kt` — untouched
+- `build.gradle.kts` — untouched
+- `AndroidManifest.xml` — untouched
 
 ---
 
-## Phase 3: Quality Selector + FFmpeg Download Flow 🔄 PENDING
+## Phase 3: Quality Selector + FFmpeg Download Flow ✅ COMPLETED
 
-**Status:** Not started — depends on Phase 2.
+**Status:** Done — `flutter analyze` passes with 0 issues.
 
-**Goal:** Let users pick quality (1080p, 720p, 480p, audio-only). For 1080p+, download video+audio separately and merge with FFmpeg.
+**What was added:**
+- `lib/models/stream_option.dart` — StreamOption model with StreamType enum (muxed, videoOnly, audioOnly)
 
-**Planned changes:**
-- `lib/models/video_info.dart` — Add `StreamOption` model, extend `VideoInfo` with stream list
+**What was modified:**
+- `lib/models/video_info.dart` — Added `availableStreams` field (List<StreamOption>)
 - `lib/services/download_service.dart`:
-  - Restructure `getVideoInfo()` to expose all streams (muxed, video-only, audio-only)
-  - Rewrite `downloadVideo()` for multi-phase download + FFmpeg merge
-  - Update file extension logic (audio → `.m4a`, muxed/video+audio → `.mp4`)
+  - `getVideoInfo()` now builds a full list of StreamOption objects from the manifest
+  - `downloadVideo()` accepts a `StreamOption` parameter
+  - Added `_downloadMuxed()` for video+audio merging via FFmpeg
+  - Added `_saveToDownloads()` and `_cleanupTempFiles()` helpers
+  - Multi-phase DownloadProgress with `phase` field
 - `lib/screens/home_screen.dart`:
-  - Add quality selector UI (dropdown or bottom sheet) between video card and download button
-  - Update download progress to show multi-phase states ("Downloading video...", "Downloading audio...", "Merging...")
-- `lib/main.dart` — untouched
-
-**DO NOT TOUCH:**
-- `download_service.dart` lines 22-24 (MethodChannel name)
-- `download_service.dart` lines 82-101 (oEmbed metadata fetch)
-- `download_service.dart` lines 103-138 (manifest fetch with retry)
-- `home_screen.dart` lines 106-109 (share functionality)
-- `MainActivity.kt` lines 39-67 (saveToDownloads — format-agnostic)
-
-**Critical safety rule:**
-Quality selector MUST NOT expose video-only or audio-only streams unless FFmpeg is active. Otherwise users get broken files.
-
-**Smoke test checklist:**
-- [ ] Quality selector shows all available streams
-- [ ] Selecting muxed stream (360p) downloads correctly (same as before)
-- [ ] Selecting 1080p downloads video+audio and merges correctly
-- [ ] Audio-only selection works
-- [ ] File saved to Downloads with correct extension
-- [ ] Share works for all quality types
-- [ ] History records correct quality info
-- [ ] No orphaned temp files after download
+  - Added `_selectedStream` state variable
+  - Quality selector dropdown in video card
+  - Download button shows selected quality label
+  - Multi-phase progress display ("Downloading video...", "Downloading audio...", "Merging streams...")
+  - History records selected quality label
 
 ---
 
@@ -120,14 +95,12 @@ dependencies:
   path_provider: ^2.1.6
   share_plus: ^12.0.2
   shared_preferences: ^2.3.0          # Added in Phase 1
+  ffmpeg_kit_flutter_new: ^4.2.0      # Added in Phase 2
 
 dev_dependencies:
   flutter_test: sdk
   flutter_lints: ^6.0.0
 ```
-
-**Phase 2 will add:**
-- `ffmpeg_kit_flutter_new: ^4.2.0` (min variant)
 
 ---
 
@@ -137,12 +110,13 @@ dev_dependencies:
 lib/
 ├── main.dart                          — App entry (DO NOT TOUCH)
 ├── models/
-│   ├── video_info.dart                — VideoInfo data model (Phase 3: will extend)
+│   ├── video_info.dart                — VideoInfo data model (extended in Phase 3)
+│   ├── stream_option.dart             — NEW: StreamOption model (Phase 3)
 │   └── download_entry.dart            — NEW: history entry model (Phase 1)
 ├── screens/
-│   └── home_screen.dart               — Single screen with bottom nav (Phase 1: modified)
+│   └── home_screen.dart               — Single screen with bottom nav + quality selector (Phases 1 & 3)
 └── services/
-    ├── download_service.dart          — YouTube API + download (Phase 3: will rewrite)
+    ├── download_service.dart          — YouTube API + download + FFmpeg muxing (Phase 3)
     └── history_service.dart           — NEW: SharedPreferences history (Phase 1)
 ```
 

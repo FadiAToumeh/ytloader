@@ -1,3 +1,5 @@
+import 'stream_option.dart';
+
 class VideoInfo {
   final String title;
   final String author;
@@ -6,6 +8,7 @@ class VideoInfo {
   final String? streamUrl;
   final int? fileSizeBytes;
   final String quality;
+  final List<StreamOption> availableStreams;
 
   const VideoInfo({
     required this.title,
@@ -15,6 +18,7 @@ class VideoInfo {
     this.streamUrl,
     this.fileSizeBytes,
     this.quality = 'Best Available',
+    this.availableStreams = const [],
   });
 
   String get durationText {

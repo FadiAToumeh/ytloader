@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/download_entry.dart';
+import '../models/stream_option.dart';
 import '../models/video_info.dart';
 import '../services/download_service.dart';
 import '../services/history_service.dart';
@@ -19,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final HistoryService _historyService = HistoryService();
 
   VideoInfo? _videoInfo;
+  StreamOption? _selectedStream;
   bool _isLoadingInfo = false;
   bool _isDownloading = false;
   DownloadProgress? _downloadProgress;
@@ -74,6 +76,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final info = await _downloadService.getVideoInfo(url);
       setState(() {
         _videoInfo = info;
+        _selectedStream = info.availableStreams.isNotEmpty
+            ? info.availableStreams.first
+            : null;
         _isLoadingInfo = false;
       });
     } catch (e) {
@@ -89,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _downloadVideo() async {
-    if (_videoInfo == null) return;
+    if (_videoInfo == null || _selectedStream == null) return;
 
     setState(() {
       _isDownloading = true;
@@ -99,17 +104,19 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      final savedPath = await _downloadService.downloadVideo(_videoInfo!, (
-        progress,
-      ) {
-        setState(() => _downloadProgress = progress);
-      });
+      final savedPath = await _downloadService.downloadVideo(
+        _videoInfo!,
+        _selectedStream!,
+        (progress) {
+          setState(() => _downloadProgress = progress);
+        },
+      );
 
       final entry = DownloadEntry(
         title: _videoInfo!.title,
         author: _videoInfo!.author,
         thumbnailUrl: _videoInfo!.thumbnailUrl,
-        quality: _videoInfo!.quality,
+        quality: _selectedStream!.displayLabel,
         filePath: savedPath,
         timestamp: DateTime.now(),
       );
@@ -411,6 +418,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 const SizedBox(height: 12),
+                if (_videoInfo!.availableStreams.isNotEmpty)
+                  _buildQualitySelector(),
+                const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   child: _isDownloading
@@ -425,24 +435,58 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildQualitySelector() {
+    return DropdownButtonFormField<StreamOption>(
+      initialValue: _selectedStream,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: 'Quality',
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      items: _videoInfo!.availableStreams.map((stream) {
+        return DropdownMenuItem<StreamOption>(
+          value: stream,
+          child: Text(
+            '${stream.displayLabel} (${stream.fileSizeText})',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        if (value != null) {
+          setState(() => _selectedStream = value);
+        }
+      },
+    );
+  }
+
   Widget _buildDownloadButton() {
+    final label = _selectedStream != null
+        ? 'Download ${_selectedStream!.qualityLabel}'
+        : 'Download Video';
     return FilledButton.icon(
       onPressed: _downloadVideo,
       icon: const Icon(Icons.download),
-      label: const Text('Download Video'),
+      label: Text(label),
     );
   }
 
   Widget _buildDownloadProgress() {
     final progress = _downloadProgress;
+    final phase = progress?.phase ?? 'Starting download...';
+    final hasProgress = progress != null && progress.total > 0;
     return Column(
       children: [
-        LinearProgressIndicator(value: progress?.percentage, minHeight: 6),
+        LinearProgressIndicator(
+          value: hasProgress ? progress.percentage : null,
+          minHeight: 6,
+        ),
         const SizedBox(height: 8),
         Text(
-          progress != null
-              ? '${progress.percentageText} (${_formatBytes(progress.received)} / ${_formatBytes(progress.total)})'
-              : 'Starting download...',
+          hasProgress
+              ? '$phase ${progress.percentageText} (${_formatBytes(progress.received)} / ${_formatBytes(progress.total)})'
+              : phase,
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],
