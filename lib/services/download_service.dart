@@ -33,6 +33,8 @@ class DownloadService {
 
   static const int _maxRetries = 3;
   static const Duration _retryDelay = Duration(seconds: 2);
+  static const String _userAgent =
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
   bool _isValidYouTubeUrl(String url) {
     final uri = Uri.tryParse(url);
@@ -230,7 +232,7 @@ class DownloadService {
           ),
         );
       },
-      options: Options(headers: {'User-Agent': 'Mozilla/5.0'}),
+      options: Options(headers: {'User-Agent': _userAgent}),
     );
 
     return _saveToDownloads(tempPath, '$safeTitle.$ext');
@@ -268,7 +270,7 @@ class DownloadService {
             ),
           );
         },
-        options: Options(headers: {'User-Agent': 'Mozilla/5.0'}),
+        options: Options(headers: {'User-Agent': _userAgent}),
       );
 
       onProgress?.call(
@@ -291,7 +293,7 @@ class DownloadService {
             ),
           );
         },
-        options: Options(headers: {'User-Agent': 'Mozilla/5.0'}),
+        options: Options(headers: {'User-Agent': _userAgent}),
       );
 
       onProgress?.call(
